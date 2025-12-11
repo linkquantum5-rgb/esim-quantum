@@ -25,7 +25,7 @@ export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeTab, setActiveTab] = useState("pos");
   const [balance, setBalance] = useState(0);
-  const MASTER_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "admin123"; 
+  const MASTER_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "15995991"; 
 
   // POS STATES
   const [apiCountries, setApiCountries] = useState<any[]>([]);
