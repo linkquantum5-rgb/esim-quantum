@@ -26,7 +26,6 @@ export default function Navbar() {
         {/* LOGO */}
         <Link href="/" className="flex items-center gap-2" onClick={() => setIsMenuOpen(false)}>
           <div className="bg-orange-600 text-white font-bold rounded-lg p-1.5 text-xl">LR</div>
-          {/* AQUÍ ESTÁ EL ARREGLO: translate="no" */}
           <span className="text-xl font-bold text-orange-600" translate="no">eSIM Quantum</span>
         </Link>
 
@@ -66,7 +65,7 @@ export default function Navbar() {
         </div>
       </div>
 
-      {/* DESPLEGABLE MÓVIL */}
+      {/* DESPLEGABLE MÓVIL (Sin botón Admin) */}
       {isMenuOpen && (
         <div className="md:hidden absolute top-16 left-0 w-full bg-white border-b border-gray-200 shadow-xl z-40 animate-in slide-in-from-top-5">
           <div className="flex flex-col p-4 space-y-4">
@@ -80,9 +79,6 @@ export default function Navbar() {
                 {link.name}
               </Link>
             ))}
-            <Link href="/admin" onClick={() => setIsMenuOpen(false)} className="text-sm text-gray-400 pt-2">
-              Admin Access
-            </Link>
           </div>
         </div>
       )}
