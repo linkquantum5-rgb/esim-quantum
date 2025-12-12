@@ -25,7 +25,7 @@ export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeTab, setActiveTab] = useState("pos");
   const [balance, setBalance] = useState(0);
-  const MASTER_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "15995991"; 
+  const MASTER_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "admin123"; 
 
   // POS STATES
   const [apiCountries, setApiCountries] = useState<any[]>([]);
@@ -49,7 +49,6 @@ export default function AdminPage() {
   const [uploadTab, setUploadTab] = useState("single"); 
   const [bulkData, setBulkData] = useState("");
 
-  // MODIFICADO: Agregado duration al estado inicial
   const [invFormData, setInvFormData] = useState({
     countryCode: '', countryName: '', planName: '', price: '', dataAmount: '', duration: '',
     qrImage: '', manualCode: '', stock: '1', smdpAddress: '', activationCode: ''
@@ -69,7 +68,7 @@ export default function AdminPage() {
   const [filterActive, setFilterActive] = useState("");
   const [filterHistory, setFilterHistory] = useState("");
 
-  // --- ESTADOS PARA FILTROS INDIVIDUALES ---
+  // ESTADOS PARA FILTROS INDIVIDUALES (SUPPORT)
   const [searchLive, setSearchLive] = useState("");
   const [searchManual, setSearchManual] = useState("");
   const [searchHistoryTabs, setSearchHistoryTabs] = useState(""); 
@@ -137,14 +136,12 @@ export default function AdminPage() {
   const handleInvPlanSelect = (planId: string) => {
       const plan = invAvailablePlans.find(p => p.id === planId);
       if (plan) {
-          // Intentamos extraer la duración si viene de la API, sino por defecto 30
           const duration = plan.validity ? plan.validity.replace(' Days', '') : '30';
-          
           setInvFormData(prev => ({
               ...prev,
               planName: plan.name.replace('[DB] ', ''), price: String(plan.price),
               dataAmount: plan.data.replace(' GB', '').replace(' Unlimited', 'Unlimited'),
-              duration: String(duration), // Autofill duración
+              duration: String(duration),
               qrImage: '', manualCode: '', stock: '1', smdpAddress: '', activationCode: ''
           }));
           toast.success("Template loaded");
@@ -161,25 +158,19 @@ export default function AdminPage() {
 
   const handleInventorySubmit = async (e: React.FormEvent) => {
       e.preventDefault();
-      // MODIFICADO: Se agrega duration al objeto
       const newOffer = {
           plan_name: invFormData.planName,
           country_name: invFormData.countryName,
           country_code: invFormData.countryCode,
           price: parseFloat(invFormData.price),
           data_amount: invFormData.dataAmount,
-          duration: parseInt(invFormData.duration) || 30, // Guardamos la duración
+          duration: parseInt(invFormData.duration) || 30,
           stock: 1,
           manual_code: `LPA:1$${invFormData.smdpAddress}$${invFormData.activationCode}`,
           qr_image: invFormData.qrImage
       };
       const { error } = await supabase.from('offers').insert([newOffer]);
-      if (!error) { 
-          toast.success("ESIM Added!"); 
-          setDialogOpen(false); 
-          fetchSupabaseOffers(); 
-          setInvFormData({ countryCode: '', countryName: '', planName: '', price: '', dataAmount: '', duration: '', qrImage: '', smdpAddress: '', activationCode: '', manualCode: '', stock: '1' }); 
-      } 
+      if (!error) { toast.success("ESIM Added!"); setDialogOpen(false); fetchSupabaseOffers(); setInvFormData({ countryCode: '', countryName: '', planName: '', price: '', dataAmount: '', duration: '', qrImage: '', smdpAddress: '', activationCode: '', manualCode: '', stock: '1' }); } 
       else { toast.error(error.message); }
   };
 
@@ -244,10 +235,9 @@ export default function AdminPage() {
   const handlePurchase = async () => { if (!selectedPlan || !customerEmail || !customerName) { toast.error("Complete all fields"); return; } setIsProcessing(true); const isManual = selectedPlan.type === 'manual' || selectedPlan.qr_image; const result = await adminPurchaseEsim(selectedPlan.id, customerEmail, customerName, isManual); if (result.success) { toast.success("Sold!"); setPurchaseResult(result); if (!isManual) setBalance(prev => prev - selectedPlan.price); else { fetchSupabaseOffers(); setPosPlans(prev => prev.filter(p => p.id !== selectedPlan.id)); setSelectedPlan(null); } handleSupportSearch(""); } else { toast.error("Failed: " + result.error); } setIsProcessing(false); };
   const resetSale = () => { setPurchaseResult(null); setCustomerEmail(""); setCustomerName(""); setSelectedPlan(null); };
 
-  // --- SUPPORT LOGIC ---
+  // --- SUPPORT LOGIC & FILTERS ---
   const handleSupportSearch = async (queryOverride?: string) => { const queryToUse = queryOverride !== undefined ? queryOverride : supportQuery; setIsSearching(true); const res: any = await searchCustomerOrders(queryToUse); if (res.success) { setSupportResults(res.orders); } else { toast.error("Search failed"); } setIsSearching(false); };
   
-  // --- FILTRADO CON BUSCADORES ---
   const apiLiveOrders = supportResults?.filter((o:any) => {
     const matchesFilter = (o.customer_name || "").toLowerCase().includes(searchLive.toLowerCase()) || (o.customer_email || "").toLowerCase().includes(searchLive.toLowerCase());
     return o.type !== 'manual' && getPlanStatus(o) !== "Expired" && matchesFilter;
@@ -280,7 +270,7 @@ export default function AdminPage() {
         <TabsContent value="pos" className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {!purchaseResult ? (
-                    <Card className="border-2 border-blue-50 shadow-md flex flex-col h-full"><CardHeader><CardTitle className="flex items-center gap-2"><CreditCard className="h-5 w-5 text-blue-600"/> Instant Issue</CardTitle></CardHeader><CardContent className="space-y-5 flex-1"><div className="space-y-2"><Label>1. Destination</Label><div className="relative"><Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400 pointer-events-none" /><Select onValueChange={handleApiCountryChange}><SelectTrigger className="pl-8"><SelectValue placeholder="Select Country" /></SelectTrigger><SelectContent><div className="p-2 sticky top-0 bg-white z-10"><Input placeholder="Type..." value={countrySearch} onChange={(e) => setCountrySearch(e.target.value)} className="h-8" onKeyDown={(e) => e.stopPropagation()} /></div>{filteredCountries.map((c:any) => (<SelectItem key={c.id} value={String(c.id)}>{c.flag} {c.name}</SelectItem>))}</SelectContent></Select></div></div><div className="space-y-2"><Label>2. Plan</Label><div className="relative"><Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400 pointer-events-none" /><Select disabled={!selectedCountry} onValueChange={(id) => setSelectedPlan(posPlans.find(p => p.id === id))}><SelectTrigger className="pl-8"><SelectValue placeholder="Select Plan" /></SelectTrigger><SelectContent><div className="p-2 sticky top-0 bg-white z-10"><Input placeholder="Filter..." value={planSearch} onChange={(e) => setPlanSearch(e.target.value)} className="h-8" onKeyDown={(e) => e.stopPropagation()} /></div>{filteredPlans.map((p:any) => (<SelectItem key={p.id} value={p.id}>{p.data} - ${p.price} ({p.validity})</SelectItem>))}</SelectContent></Select></div></div><div className="space-y-2"><Label>3. Name</Label><Input placeholder="John Doe" value={customerName} onChange={(e) => setCustomerName(e.target.value)} /></div><div className="space-y-2"><Label>4. Email</Label><Input placeholder="customer@client.com" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} /></div></CardContent><div className="bg-gray-50 p-6 mt-auto border-t border-gray-100"><div className="flex justify-between items-end mb-4"><span className="text-gray-500 font-medium">Total</span><span className="text-4xl font-bold text-green-600">${selectedPlan ? Number(selectedPlan.price).toFixed(2) : "0.00"}</span></div><Button className="w-full bg-blue-600 hover:bg-blue-700 h-14 text-xl font-bold shadow-lg" onClick={handlePurchase} disabled={isProcessing || !selectedPlan || !customerEmail || !customerName}>{isProcessing ? "Processing..." : "💰 SELL"}</Button></div></Card>
+                    <Card className="border-2 border-blue-50 shadow-md flex flex-col h-full"><CardHeader><CardTitle className="flex items-center gap-2"><CreditCard className="h-5 w-5 text-blue-600"/> Instant Issue</CardTitle></CardHeader><CardContent className="space-y-5 flex-1"><div className="space-y-2"><Label>1. Destination</Label><div className="relative"><Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400 pointer-events-none" /><Select onValueChange={handleApiCountryChange}><SelectTrigger className="pl-8"><SelectValue placeholder="Select Country" /></SelectTrigger><SelectContent><div className="p-2 sticky top-0 bg-white z-10"><Input placeholder="Type..." value={countrySearch} onChange={(e) => setCountrySearch(e.target.value)} className="h-8" onKeyDown={(e) => e.stopPropagation()} /></div>{filteredCountries.map((c:any) => (<SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>))}</SelectContent></Select></div></div><div className="space-y-2"><Label>2. Plan</Label><div className="relative"><Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400 pointer-events-none" /><Select disabled={!selectedCountry} onValueChange={(id) => setSelectedPlan(posPlans.find(p => p.id === id))}><SelectTrigger className="pl-8"><SelectValue placeholder="Select Plan" /></SelectTrigger><SelectContent><div className="p-2 sticky top-0 bg-white z-10"><Input placeholder="Filter..." value={planSearch} onChange={(e) => setPlanSearch(e.target.value)} className="h-8" onKeyDown={(e) => e.stopPropagation()} /></div>{filteredPlans.map((p:any) => (<SelectItem key={p.id} value={p.id}>{p.data} - ${p.price} ({p.validity})</SelectItem>))}</SelectContent></Select></div></div><div className="space-y-2"><Label>3. Name</Label><Input placeholder="John Doe" value={customerName} onChange={(e) => setCustomerName(e.target.value)} /></div><div className="space-y-2"><Label>4. Email</Label><Input placeholder="customer@client.com" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} /></div></CardContent><div className="bg-gray-50 p-6 mt-auto border-t border-gray-100"><div className="flex justify-between items-end mb-4"><span className="text-gray-500 font-medium">Total</span><span className="text-4xl font-bold text-green-600">${selectedPlan ? Number(selectedPlan.price).toFixed(2) : "0.00"}</span></div><Button className="w-full bg-blue-600 hover:bg-blue-700 h-14 text-xl font-bold shadow-lg" onClick={handlePurchase} disabled={isProcessing || !selectedPlan || !customerEmail || !customerName}>{isProcessing ? "Processing..." : "💰 SELL"}</Button></div></Card>
                 ) : (
                     <Card className="border-2 border-green-100 shadow-lg bg-green-50/20 col-span-full"><div className="p-8 text-center space-y-6"><div className="flex flex-col items-center"><CheckCircle className="h-16 w-16 text-green-600 mb-2" /><h2 className="text-3xl font-bold text-green-800">Sale Completed!</h2><p className="text-gray-600">eSIM issued for {customerName}</p></div><div className="grid md:grid-cols-2 gap-8 text-left bg-white p-6 rounded-xl border border-gray-200"><div className="flex flex-col items-center justify-center border-r border-gray-100 pr-4"><Label className="mb-2 text-gray-500">Scan QR Code</Label><img src={purchaseResult.qr_code} alt="QR" className="w-48 h-48 border p-2 rounded-lg" /></div><div className="space-y-4"><Label className="text-gray-500">Manual Activation Details</Label><div className="space-y-1"><p className="text-xs font-bold text-gray-400 uppercase">SM-DP+ Address</p><div className="flex gap-2"><code className="bg-gray-100 p-2 rounded block w-full text-sm">{getManualDetails(purchaseResult.activation_code).smdp}</code><Button size="icon" variant="ghost" onClick={() => navigator.clipboard.writeText(getManualDetails(purchaseResult.activation_code).smdp)}><Copy className="h-4 w-4"/></Button></div></div><div className="space-y-1"><p className="text-xs font-bold text-gray-400 uppercase">Activation Code</p><div className="flex gap-2"><code className="bg-gray-100 p-2 rounded block w-full text-sm">{getManualDetails(purchaseResult.activation_code).code}</code><Button size="icon" variant="ghost" onClick={() => navigator.clipboard.writeText(getManualDetails(purchaseResult.activation_code).code)}><Copy className="h-4 w-4"/></Button></div></div></div></div><div className="flex gap-4 justify-center pt-4"><Button variant="outline" onClick={() => window.print()}><Printer className="mr-2 h-4 w-4"/> Print Page</Button><Button className="bg-blue-600 hover:bg-blue-700" onClick={handleSendEmail}><Mail className="mr-2 h-4 w-4"/> Send Email to Customer</Button><Button variant="ghost" onClick={resetSale}>New Sale</Button></div></div></Card>
                 )}
@@ -296,20 +286,17 @@ export default function AdminPage() {
                     <DialogTrigger asChild><Button size="lg" className="bg-orange-600 hover:bg-orange-700"><Plus className="h-5 w-5 mr-2" /> Add Offer</Button></DialogTrigger>
                     <DialogContent className="max-w-lg">
                         <DialogHeader><DialogTitle>Create Offer</DialogTitle><DialogDescription>Auto-fill from API or DB.</DialogDescription></DialogHeader>
-                        <div className="bg-blue-50 p-4 rounded-lg mb-4 border border-blue-100"><div className="flex items-center gap-2 mb-2 text-blue-700 text-sm font-bold"><Wand2 className="h-4 w-4"/> Autofill Template</div><div className="grid grid-cols-2 gap-4"><Select onValueChange={handleInvCountrySelect}><SelectTrigger><SelectValue placeholder="Country" /></SelectTrigger><SelectContent><div className="p-2 sticky top-0 bg-white z-10"><Input placeholder="Filter..." value={invCountrySearch} onChange={(e) => setInvCountrySearch(e.target.value)} className="h-8" onKeyDown={(e) => e.stopPropagation()} /></div>{invFilteredCountries.map((c:any) => (<SelectItem key={c.id} value={String(c.id)}>{c.flag} {c.name}</SelectItem>))}</SelectContent></Select><Select disabled={!invSelectedCountry} onValueChange={handleInvPlanSelect}><SelectTrigger><SelectValue placeholder="Plan" /></SelectTrigger><SelectContent><div className="p-2 sticky top-0 bg-white z-10"><Input placeholder="Filter..." value={invPlanSearch} onChange={(e) => setInvPlanSearch(e.target.value)} className="h-8" onKeyDown={(e) => e.stopPropagation()} /></div>{invFilteredPlans.map((p:any) => (<SelectItem key={p.id} value={p.id}>{p.data} - ${p.price}</SelectItem>))}</SelectContent></Select></div></div>
+                        <div className="bg-blue-50 p-4 rounded-lg mb-4 border border-blue-100"><div className="flex items-center gap-2 mb-2 text-blue-700 text-sm font-bold"><Wand2 className="h-4 w-4"/> Autofill Template</div><div className="grid grid-cols-2 gap-4"><Select onValueChange={handleInvCountrySelect}><SelectTrigger><SelectValue placeholder="Country" /></SelectTrigger><SelectContent><div className="p-2 sticky top-0 bg-white z-10"><Input placeholder="Filter..." value={invCountrySearch} onChange={(e) => setInvCountrySearch(e.target.value)} className="h-8" onKeyDown={(e) => e.stopPropagation()} /></div>{invFilteredCountries.map((c:any) => (<SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>))}</SelectContent></Select><Select disabled={!invSelectedCountry} onValueChange={handleInvPlanSelect}><SelectTrigger><SelectValue placeholder="Plan" /></SelectTrigger><SelectContent><div className="p-2 sticky top-0 bg-white z-10"><Input placeholder="Filter..." value={invPlanSearch} onChange={(e) => setInvPlanSearch(e.target.value)} className="h-8" onKeyDown={(e) => e.stopPropagation()} /></div>{invFilteredPlans.map((p:any) => (<SelectItem key={p.id} value={p.id}>{p.data} - ${p.price}</SelectItem>))}</SelectContent></Select></div></div>
                         <Tabs value={uploadTab} onValueChange={setUploadTab}>
                             <TabsList className="w-full mb-4"><TabsTrigger value="single" className="flex-1">Single Upload</TabsTrigger><TabsTrigger value="bulk" className="flex-1">Bulk Upload (Text)</TabsTrigger></TabsList>
                             <TabsContent value="single">
                                 <form onSubmit={handleInventorySubmit} className="space-y-4">
                                     <div className="grid grid-cols-2 gap-4"><div className="space-y-2"><Label>Country Name</Label><Input placeholder="Bahamas" value={invFormData.countryName} onChange={(e) => setInvFormData({...invFormData, countryName: e.target.value})} /></div><div className="space-y-2"><Label>Plan Name</Label><Input placeholder="10GB Promo" value={invFormData.planName} onChange={(e) => setInvFormData({...invFormData, planName: e.target.value})} /></div></div>
-                                    
-                                    {/* MODIFICADO: Agregada casilla de Duration */}
                                     <div className="grid grid-cols-3 gap-4">
                                         <div className="space-y-2"><Label>Data (GB)</Label><Input placeholder="10 GB" value={invFormData.dataAmount} onChange={(e) => setInvFormData({...invFormData, dataAmount: e.target.value})} /></div>
                                         <div className="space-y-2"><Label>Duration (Days)</Label><Input type="number" placeholder="30" value={invFormData.duration} onChange={(e) => setInvFormData({...invFormData, duration: e.target.value})} /></div>
                                         <div className="space-y-2"><Label>Price ($)</Label><Input type="number" placeholder="15.00" value={invFormData.price} onChange={(e) => setInvFormData({...invFormData, price: e.target.value})} /></div>
                                     </div>
-
                                     <div className="space-y-2"><Label>Stock (Always 1)</Label><Input type="number" value={1} disabled className="bg-gray-100" /></div>
                                     <div className="space-y-2"><Label>QR Image</Label><div className="flex items-center gap-2"><Input type="file" accept="image/*" onChange={handleImageUpload} className="cursor-pointer" />{invFormData.qrImage && <CheckCircle className="text-green-500 h-6 w-6"/>}</div></div>
                                     <div className="grid grid-cols-2 gap-4"><div className="space-y-2"><Label>SM-DP+ Address</Label><Input placeholder="rsp.truphone.com" value={invFormData.smdpAddress} onChange={(e) => setInvFormData({...invFormData, smdpAddress: e.target.value})} /></div><div className="space-y-2"><Label>Activation Code</Label><Input placeholder="AC-123..." value={invFormData.activationCode} onChange={(e) => setInvFormData({...invFormData, activationCode: e.target.value})} /></div></div>
@@ -343,13 +330,7 @@ export default function AdminPage() {
                             <TableRow>
                                 <TableHead className="min-w-[200px]">
                                     Customer
-                                    <Input 
-                                        placeholder="Search name..." 
-                                        className="h-6 text-xs mt-1 font-normal" 
-                                        value={searchLive} 
-                                        onChange={(e) => setSearchLive(e.target.value)} 
-                                        onClick={(e) => e.stopPropagation()}
-                                    />
+                                    <Input placeholder="Search name..." className="h-6 text-xs mt-1 font-normal" value={searchLive} onChange={(e) => setSearchLive(e.target.value)} onClick={(e) => e.stopPropagation()} />
                                 </TableHead>
                                 <TableHead>Plan</TableHead>
                                 <TableHead>Status</TableHead>
@@ -376,13 +357,7 @@ export default function AdminPage() {
                             <TableRow>
                                 <TableHead className="min-w-[200px]">
                                     Customer
-                                    <Input 
-                                        placeholder="Search name..." 
-                                        className="h-6 text-xs mt-1 font-normal bg-white" 
-                                        value={searchManual} 
-                                        onChange={(e) => setSearchManual(e.target.value)}
-                                        onClick={(e) => e.stopPropagation()}
-                                    />
+                                    <Input placeholder="Search name..." className="h-6 text-xs mt-1 font-normal bg-white" value={searchManual} onChange={(e) => setSearchManual(e.target.value)} onClick={(e) => e.stopPropagation()} />
                                 </TableHead>
                                 <TableHead>Date</TableHead>
                                 <TableHead>Plan</TableHead>
@@ -409,13 +384,7 @@ export default function AdminPage() {
                             <TableRow>
                                 <TableHead className="min-w-[200px]">
                                     Customer
-                                    <Input 
-                                        placeholder="Search name..." 
-                                        className="h-6 text-xs mt-1 font-normal" 
-                                        value={searchHistoryTabs} 
-                                        onChange={(e) => setSearchHistoryTabs(e.target.value)}
-                                        onClick={(e) => e.stopPropagation()}
-                                    />
+                                    <Input placeholder="Search name..." className="h-6 text-xs mt-1 font-normal" value={searchHistoryTabs} onChange={(e) => setSearchHistoryTabs(e.target.value)} onClick={(e) => e.stopPropagation()} />
                                 </TableHead>
                                 <TableHead>Date</TableHead>
                                 <TableHead>Plan</TableHead>
