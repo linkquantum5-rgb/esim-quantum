@@ -176,15 +176,6 @@ export default function PlansPage() {
                         <div className="flex items-start gap-2"><Check className="h-5 w-5 text-green-600 mt-0.5" /><span className="text-sm">{plan.speed}</span></div>
                         {Array.isArray(plan.features) && plan.features.map((feature: string, idx: number) => (<div key={idx} className="flex items-start gap-2"><Check className="h-5 w-5 text-green-600 mt-0.5" /><span className="text-sm">{feature}</span></div>))}
                         </div>
-                        
-                        {/* --- AQUÍ ESTÁ EL ID OCULTO --- */}
-                        <div className="pt-2 text-center">
-                            <span className="text-[10px] text-gray-300 font-mono select-all cursor-text" title="Plan ID (Admin)">
-                                {plan.id}
-                            </span>
-                        </div>
-                        {/* ---------------------------------- */}
-
                     </div>
                     </CardContent>
                     <CardFooter className="flex gap-2">
