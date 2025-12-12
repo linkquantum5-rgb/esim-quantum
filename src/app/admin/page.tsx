@@ -17,7 +17,6 @@ import { Plus, QrCode, Search, CreditCard, RefreshCw, Printer, CheckCircle, User
 
 import { fetchCountriesList, fetchPlans } from '@/lib/esim-actions';
 import { adminPurchaseEsim, getAdminBalance, searchCustomerOrders } from '@/lib/admin-actions';
-import { plans as localPlans, countries as localCountries } from '@/lib/data'; 
 import AdminLogin from '@/components/AdminLogin';
 import { supabase } from '@/lib/supabase';
 
@@ -65,10 +64,8 @@ export default function AdminPage() {
   const [supportResults, setSupportResults] = useState<any[] | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
-  const [filterActive, setFilterActive] = useState("");
-  const [filterHistory, setFilterHistory] = useState("");
-
-  // ESTADOS PARA FILTROS INDIVIDUALES (SUPPORT)
+  
+  // FILTROS SUPPORT
   const [searchLive, setSearchLive] = useState("");
   const [searchManual, setSearchManual] = useState("");
   const [searchHistoryTabs, setSearchHistoryTabs] = useState(""); 
@@ -76,9 +73,16 @@ export default function AdminPage() {
   useEffect(() => {
     if (isAuthenticated) {
         const init = async () => {
-            setBalance(await getAdminBalance());
-            setApiCountries(await fetchCountriesList());
-            fetchSupabaseOffers(); 
+            try {
+                setBalance(await getAdminBalance());
+                const countries = await fetchCountriesList();
+                // Protección: Asegurar que countries sea un array
+                setApiCountries(Array.isArray(countries) ? countries : []);
+                fetchSupabaseOffers(); 
+            } catch (e) {
+                console.error("Error init admin", e);
+                setApiCountries([]);
+            }
         };
         init();
     }
@@ -125,8 +129,8 @@ export default function AdminPage() {
               qr_image: p.qr_image
           })) : [];
 
-          const cleanApiPlans = apiPlans.filter((p:any) => p.type === 'api');
-          const uniqueDbPlans = formattedDbPlans.filter((v,i,a)=>a.findIndex(t=>(t.name === v.name))===i);
+          const cleanApiPlans = Array.isArray(apiPlans) ? apiPlans.filter((p:any) => p.type === 'api') : [];
+          const uniqueDbPlans = formattedDbPlans.filter((v:any,i:number,a:any)=>a.findIndex((t:any)=>(t.name === v.name))===i);
 
           setInvAvailablePlans([...uniqueDbPlans, ...cleanApiPlans]);
           setInvFormData(prev => ({ ...prev, countryName: country.name, countryCode: country.code }));
@@ -219,7 +223,6 @@ export default function AdminPage() {
   const getProgress = (order: any) => { if(!order.usage || order.usage.initial_data_quantity === 0) return 0; return (order.usage.rem_data_quantity / order.usage.initial_data_quantity) * 100; };
   const getPlanStatus = (order: any) => { if (!order.usage) return "Unknown"; if (order.usage.rem_data_quantity === 0) return "Expired"; if (order.usage.rem_data_quantity === order.usage.initial_data_quantity) return "Pending Activation"; return "Active"; };
   
-  // --- HELPER: 30 DAYS CHECK ---
   const isWithin30Days = (dateString: string) => {
       const date = new Date(dateString);
       const now = new Date();
@@ -228,33 +231,61 @@ export default function AdminPage() {
       return diffDays <= 30;
   };
 
-  // --- POS LOGIC ---
-  const filteredCountries = apiCountries.filter(c => c.name.toLowerCase().includes(countrySearch.toLowerCase()));
-  const filteredPlans = posPlans.filter(p => p.name.toLowerCase().includes(planSearch.toLowerCase()));
-  const handleApiCountryChange = async (val: string) => { setSelectedCountry(val); setPosPlans([]); setSelectedPlan(null); const p = await fetchPlans(val); setPosPlans(p); };
+  // --- POS LOGIC (PROTEGIDA) ---
+  const filteredCountries = Array.isArray(apiCountries) 
+    ? apiCountries.filter(c => c.name.toLowerCase().includes(countrySearch.toLowerCase())) 
+    : [];
+
+  const filteredPlans = Array.isArray(posPlans)
+    ? posPlans.filter(p => p.name.toLowerCase().includes(planSearch.toLowerCase()))
+    : [];
+
+  const handleApiCountryChange = async (val: string) => { 
+      setSelectedCountry(val); 
+      setPosPlans([]); 
+      setSelectedPlan(null); 
+      try {
+        const p = await fetchPlans(val); 
+        setPosPlans(Array.isArray(p) ? p : []); 
+      } catch (e) {
+        setPosPlans([]);
+      }
+  };
+
   const handlePurchase = async () => { if (!selectedPlan || !customerEmail || !customerName) { toast.error("Complete all fields"); return; } setIsProcessing(true); const isManual = selectedPlan.type === 'manual' || selectedPlan.qr_image; const result = await adminPurchaseEsim(selectedPlan.id, customerEmail, customerName, isManual); if (result.success) { toast.success("Sold!"); setPurchaseResult(result); if (!isManual) setBalance(prev => prev - selectedPlan.price); else { fetchSupabaseOffers(); setPosPlans(prev => prev.filter(p => p.id !== selectedPlan.id)); setSelectedPlan(null); } handleSupportSearch(""); } else { toast.error("Failed: " + result.error); } setIsProcessing(false); };
   const resetSale = () => { setPurchaseResult(null); setCustomerEmail(""); setCustomerName(""); setSelectedPlan(null); };
 
-  // --- SUPPORT LOGIC & FILTERS ---
-  const handleSupportSearch = async (queryOverride?: string) => { const queryToUse = queryOverride !== undefined ? queryOverride : supportQuery; setIsSearching(true); const res: any = await searchCustomerOrders(queryToUse); if (res.success) { setSupportResults(res.orders); } else { toast.error("Search failed"); } setIsSearching(false); };
+  // --- SUPPORT LOGIC (PROTEGIDA) ---
+  const handleSupportSearch = async (queryOverride?: string) => { 
+      const queryToUse = queryOverride !== undefined ? queryOverride : supportQuery; 
+      setIsSearching(true); 
+      try {
+        const res: any = await searchCustomerOrders(queryToUse); 
+        if (res.success) { setSupportResults(res.orders || []); } 
+        else { toast.error("Search failed"); setSupportResults([]); } 
+      } catch (e) {
+        setSupportResults([]);
+      }
+      setIsSearching(false); 
+  };
   
-  const apiLiveOrders = supportResults?.filter((o:any) => {
+  const apiLiveOrders = Array.isArray(supportResults) ? supportResults.filter((o:any) => {
     const matchesFilter = (o.customer_name || "").toLowerCase().includes(searchLive.toLowerCase()) || (o.customer_email || "").toLowerCase().includes(searchLive.toLowerCase());
     return o.type !== 'manual' && getPlanStatus(o) !== "Expired" && matchesFilter;
-  }) || [];
+  }) : [];
 
-  const manualSoldOrders = supportResults?.filter((o:any) => {
+  const manualSoldOrders = Array.isArray(supportResults) ? supportResults.filter((o:any) => {
     const matchesFilter = (o.customer_name || "").toLowerCase().includes(searchManual.toLowerCase()) || (o.customer_email || "").toLowerCase().includes(searchManual.toLowerCase());
     return o.type === 'manual' && isWithin30Days(o.created_at) && matchesFilter;
-  }) || [];
+  }) : [];
 
-  const historyOrders = supportResults?.filter((o:any) => {
+  const historyOrders = Array.isArray(supportResults) ? supportResults.filter((o:any) => {
     const matchesFilter = (o.customer_name || "").toLowerCase().includes(searchHistoryTabs.toLowerCase()) || (o.customer_email || "").toLowerCase().includes(searchHistoryTabs.toLowerCase());
     return ((o.type !== 'manual' && getPlanStatus(o) === "Expired") || (o.type === 'manual' && !isWithin30Days(o.created_at))) && matchesFilter;
-  }) || [];
+  }) : [];
 
-  const invFilteredCountries = apiCountries.filter(c => c.name.toLowerCase().includes(invCountrySearch.toLowerCase()));
-  const invFilteredPlans = invAvailablePlans.filter(p => p.name.toLowerCase().includes(invPlanSearch.toLowerCase()));
+  const invFilteredCountries = Array.isArray(apiCountries) ? apiCountries.filter(c => c.name.toLowerCase().includes(invCountrySearch.toLowerCase())) : [];
+  const invFilteredPlans = Array.isArray(invAvailablePlans) ? invAvailablePlans.filter(p => p.name.toLowerCase().includes(invPlanSearch.toLowerCase())) : [];
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-7xl">
@@ -270,7 +301,31 @@ export default function AdminPage() {
         <TabsContent value="pos" className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {!purchaseResult ? (
-                    <Card className="border-2 border-blue-50 shadow-md flex flex-col h-full"><CardHeader><CardTitle className="flex items-center gap-2"><CreditCard className="h-5 w-5 text-blue-600"/> Instant Issue</CardTitle></CardHeader><CardContent className="space-y-5 flex-1"><div className="space-y-2"><Label>1. Destination</Label><div className="relative"><Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400 pointer-events-none" /><Select onValueChange={handleApiCountryChange}><SelectTrigger className="pl-8"><SelectValue placeholder="Select Country" /></SelectTrigger><SelectContent><div className="p-2 sticky top-0 bg-white z-10"><Input placeholder="Type..." value={countrySearch} onChange={(e) => setCountrySearch(e.target.value)} className="h-8" onKeyDown={(e) => e.stopPropagation()} /></div>{filteredCountries.map((c:any) => (<SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>))}</SelectContent></Select></div></div><div className="space-y-2"><Label>2. Plan</Label><div className="relative"><Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400 pointer-events-none" /><Select disabled={!selectedCountry} onValueChange={(id) => setSelectedPlan(posPlans.find(p => p.id === id))}><SelectTrigger className="pl-8"><SelectValue placeholder="Select Plan" /></SelectTrigger><SelectContent><div className="p-2 sticky top-0 bg-white z-10"><Input placeholder="Filter..." value={planSearch} onChange={(e) => setPlanSearch(e.target.value)} className="h-8" onKeyDown={(e) => e.stopPropagation()} /></div>{filteredPlans.map((p:any) => (<SelectItem key={p.id} value={p.id}>{p.data} - ${p.price} ({p.validity})</SelectItem>))}</SelectContent></Select></div></div><div className="space-y-2"><Label>3. Name</Label><Input placeholder="John Doe" value={customerName} onChange={(e) => setCustomerName(e.target.value)} /></div><div className="space-y-2"><Label>4. Email</Label><Input placeholder="customer@client.com" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} /></div></CardContent><div className="bg-gray-50 p-6 mt-auto border-t border-gray-100"><div className="flex justify-between items-end mb-4"><span className="text-gray-500 font-medium">Total</span><span className="text-4xl font-bold text-green-600">${selectedPlan ? Number(selectedPlan.price).toFixed(2) : "0.00"}</span></div><Button className="w-full bg-blue-600 hover:bg-blue-700 h-14 text-xl font-bold shadow-lg" onClick={handlePurchase} disabled={isProcessing || !selectedPlan || !customerEmail || !customerName}>{isProcessing ? "Processing..." : "💰 SELL"}</Button></div></Card>
+                    <Card className="border-2 border-blue-50 shadow-md flex flex-col h-full"><CardHeader><CardTitle className="flex items-center gap-2"><CreditCard className="h-5 w-5 text-blue-600"/> Instant Issue</CardTitle></CardHeader><CardContent className="space-y-5 flex-1">
+                        <div className="space-y-2"><Label>1. Destination</Label><div className="relative"><Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400 pointer-events-none" />
+                        <Select onValueChange={handleApiCountryChange}>
+                            <SelectTrigger className="pl-8"><SelectValue placeholder="Select Country" /></SelectTrigger>
+                            <SelectContent>
+                                <div className="p-2 sticky top-0 bg-white z-10"><Input placeholder="Type..." value={countrySearch} onChange={(e) => setCountrySearch(e.target.value)} className="h-8" onKeyDown={(e) => e.stopPropagation()} /></div>
+                                {filteredCountries.map((c:any) => (
+                                    <SelectItem key={c.id} value={String(c.id)}>
+                                        {c.name} 
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        </div></div>
+                        <div className="space-y-2"><Label>2. Plan</Label><div className="relative"><Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400 pointer-events-none" />
+                        <Select disabled={!selectedCountry} onValueChange={(id) => setSelectedPlan(posPlans.find(p => p.id === id))}>
+                            <SelectTrigger className="pl-8"><SelectValue placeholder="Select Plan" /></SelectTrigger>
+                            <SelectContent><div className="p-2 sticky top-0 bg-white z-10"><Input placeholder="Filter..." value={planSearch} onChange={(e) => setPlanSearch(e.target.value)} className="h-8" onKeyDown={(e) => e.stopPropagation()} /></div>
+                            {filteredPlans.map((p:any) => (<SelectItem key={p.id} value={p.id}>{p.data} - ${p.price} ({p.validity})</SelectItem>))}
+                            </SelectContent>
+                        </Select>
+                        </div></div>
+                        <div className="space-y-2"><Label>3. Name</Label><Input placeholder="John Doe" value={customerName} onChange={(e) => setCustomerName(e.target.value)} /></div>
+                        <div className="space-y-2"><Label>4. Email</Label><Input placeholder="customer@client.com" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} /></div>
+                    </CardContent><div className="bg-gray-50 p-6 mt-auto border-t border-gray-100"><div className="flex justify-between items-end mb-4"><span className="text-gray-500 font-medium">Total</span><span className="text-4xl font-bold text-green-600">${selectedPlan ? Number(selectedPlan.price).toFixed(2) : "0.00"}</span></div><Button className="w-full bg-blue-600 hover:bg-blue-700 h-14 text-xl font-bold shadow-lg" onClick={handlePurchase} disabled={isProcessing || !selectedPlan || !customerEmail || !customerName}>{isProcessing ? "Processing..." : "💰 SELL"}</Button></div></Card>
                 ) : (
                     <Card className="border-2 border-green-100 shadow-lg bg-green-50/20 col-span-full"><div className="p-8 text-center space-y-6"><div className="flex flex-col items-center"><CheckCircle className="h-16 w-16 text-green-600 mb-2" /><h2 className="text-3xl font-bold text-green-800">Sale Completed!</h2><p className="text-gray-600">eSIM issued for {customerName}</p></div><div className="grid md:grid-cols-2 gap-8 text-left bg-white p-6 rounded-xl border border-gray-200"><div className="flex flex-col items-center justify-center border-r border-gray-100 pr-4"><Label className="mb-2 text-gray-500">Scan QR Code</Label><img src={purchaseResult.qr_code} alt="QR" className="w-48 h-48 border p-2 rounded-lg" /></div><div className="space-y-4"><Label className="text-gray-500">Manual Activation Details</Label><div className="space-y-1"><p className="text-xs font-bold text-gray-400 uppercase">SM-DP+ Address</p><div className="flex gap-2"><code className="bg-gray-100 p-2 rounded block w-full text-sm">{getManualDetails(purchaseResult.activation_code).smdp}</code><Button size="icon" variant="ghost" onClick={() => navigator.clipboard.writeText(getManualDetails(purchaseResult.activation_code).smdp)}><Copy className="h-4 w-4"/></Button></div></div><div className="space-y-1"><p className="text-xs font-bold text-gray-400 uppercase">Activation Code</p><div className="flex gap-2"><code className="bg-gray-100 p-2 rounded block w-full text-sm">{getManualDetails(purchaseResult.activation_code).code}</code><Button size="icon" variant="ghost" onClick={() => navigator.clipboard.writeText(getManualDetails(purchaseResult.activation_code).code)}><Copy className="h-4 w-4"/></Button></div></div></div></div><div className="flex gap-4 justify-center pt-4"><Button variant="outline" onClick={() => window.print()}><Printer className="mr-2 h-4 w-4"/> Print Page</Button><Button className="bg-blue-600 hover:bg-blue-700" onClick={handleSendEmail}><Mail className="mr-2 h-4 w-4"/> Send Email to Customer</Button><Button variant="ghost" onClick={resetSale}>New Sale</Button></div></div></Card>
                 )}
