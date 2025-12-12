@@ -26,7 +26,8 @@ export default function Navbar() {
         {/* LOGO */}
         <Link href="/" className="flex items-center gap-2" onClick={() => setIsMenuOpen(false)}>
           <div className="bg-orange-600 text-white font-bold rounded-lg p-1.5 text-xl">LR</div>
-          <span className="text-xl font-bold text-orange-600">eSIM Quantum</span>
+          {/* AQUÍ ESTÁ EL ARREGLO: translate="no" */}
+          <span className="text-xl font-bold text-orange-600" translate="no">eSIM Quantum</span>
         </Link>
 
         {/* MENU PC */}
