@@ -3,8 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import ClientBody from "./ClientBody";
 import Script from "next/script";
-// CORREGIDO: Agregué las llaves { } para que coincida con tu archivo original
-import { Navbar } from "@/components/navbar"; 
+import Navbar from "@/components/navbar"; // SIN LLAVES {} porque usamos export default
 import { Footer } from "@/components/footer";
 import { Toaster } from "react-hot-toast";
 
@@ -23,7 +22,6 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    // AQUÍ SIGUE EL ARREGLO DEL ERROR DE HIDRATACIÓN (suppressHydrationWarning)
     <html lang="en" suppressHydrationWarning={true}>
       <head>
         <Script
